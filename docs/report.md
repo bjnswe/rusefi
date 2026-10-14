@@ -761,3 +761,24 @@ Remaining:
   No macOS hardware run or thread dump was available, so these reproduced leaks
   do not establish that every possible source of thread exhaustion is fixed.
 - No commit, push, or GitHub comment was made.
+
+
+## 2026-10-14 - Log stock Toyota IGT1 spark angle
+
+- Added the stock ECU IGT1 angle as a regular output channel and capture it from
+  logic-analyzer channel 0 falling edges using the EXTI timestamp.
+- The value is trigger-sync phase minus `tdcPosition()`, wrapped using the
+  engine-cycle convention. `getCurrentEnginePhase()` extrapolates from the last
+  tooth at the current average degrees-per-microsecond rate; on a 36-2 wheel,
+  acceleration within the 30-degree missing-tooth gap can make that estimate
+  less accurate until the next tooth updates its anchor.
+
+| File | Change |
+| --- | --- |
+| firmware/development/logic_analyzer.cpp | Preserve the EXTI timestamp and calculate the channel 0 falling-edge angle when shaft-position input is enabled |
+| firmware/console/binary/output_channels.txt | Define `stockIgt1Angle` as a regular degree-valued output channel |
+
+- Validation: `git diff --check` passed. Generator/build validation could not be
+  completed: the Gradle wrapper distribution downloaded, but Gradle configuration
+  stalled before task execution and was interrupted. No firmware build was run.
+- No ECU capture or timing-light comparison was available.

@@ -33,7 +33,7 @@ static volatile efitimeus_t previousEngineCycleTimeUs = 0;
 
 class WaveReader {
 public:
-	void onFallEvent();
+	void onFallEvent(efitick_t stamp);
 
 	ioline_t line = 0;
 
@@ -83,8 +83,8 @@ static void riseCallback(WaveReader *reader) {
 	reader->widthEventTimeUs = nowUs;
 }
 
-void WaveReader::onFallEvent() {
-	efitimeus_t nowUs = getTimeNowUs();
+void WaveReader::onFallEvent(efitick_t stamp) {
+	efitimeus_t nowUs = NT2US(stamp);
 	fallEventCounter++;
 	lastActivityTimeUs = nowUs;
 	assertIsrContext(ObdCode::CUSTOM_ERR_6670);
@@ -112,9 +112,20 @@ void WaveReader::onFallEvent() {
 	}
 
 	periodEventTimeUs = nowUs;
+
+	if (laIndex == 0) {
+#if EFI_SHAFT_POSITION_INPUT
+		auto enginePhase = getTriggerCentral()->getCurrentEnginePhase(stamp);
+		if (enginePhase) {
+			float angle = enginePhase.Value - tdcPosition();
+			wrapAngle(angle, "stockIgt1Angle", ObdCode::CUSTOM_ERR_6564);
+			engine->outputChannels.stockIgt1Angle = angle;
+		}
+#endif // EFI_SHAFT_POSITION_INPUT
+	}
 }
 
-void logicAnalyzerCallback(void* arg, efitick_t /*stamp*/) {
+void logicAnalyzerCallback(void* arg, efitick_t stamp) {
 	WaveReader* instance = reinterpret_cast<WaveReader*>(arg);
 
 	bool rise = palReadLine(instance->line) == PAL_HIGH;
@@ -122,7 +133,7 @@ void logicAnalyzerCallback(void* arg, efitick_t /*stamp*/) {
 	if (rise) {
 		riseCallback(instance);
 	} else {
-		instance->onFallEvent();
+		instance->onFallEvent(stamp);
 	}
 }
 
