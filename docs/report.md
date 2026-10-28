@@ -455,3 +455,12 @@ Open follow-ups:
   completed: the Gradle wrapper distribution downloaded, but Gradle configuration
   stalled before task execution and was interrupted. No firmware build was run.
 - No ECU capture or timing-light comparison was available.
+
+## 2026-10-28 - Enable logic analyzer in uaEFI builds
+
+- Enabled `EFI_LOGIC_ANALYZER` in the shared uaEFI board configuration so the
+  compile-time-gated `waveinfo` command and logic-analyzer input path are present
+  in uaEFI and uaEFI Pro firmware builds.
+- The board configuration notes limited flash. `git diff --check` passed; the
+  uaEFI Pro build was not run because the build approval request was rejected.
+- No ECU flash or runtime check was performed.

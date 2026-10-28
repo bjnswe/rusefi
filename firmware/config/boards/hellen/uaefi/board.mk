@@ -12,7 +12,7 @@ ifeq ($(PROJECT_CPU),ARCH_STM32F7)
 endif
 
 #we are low on flash
-DDEFS += -DEFI_LOGIC_ANALYZER=FALSE
+DDEFS += -DEFI_LOGIC_ANALYZER=TRUE
 DDEFS += -DEFI_HPFP=FALSE
 
 #no mux on mm100
