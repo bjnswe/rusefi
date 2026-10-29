@@ -148,6 +148,7 @@ static void initWave(size_t index) {
 		 *  in case we are running, and we select none for a channel that was running, 
 		 *  this way we ensure that we do not get false report from that channel 
 		 **/
+    efiPrintf("FAIL wave%d input on %s", index, hwPortname(brainPin));
 		reader->line = 0;
 		return;
 	}
