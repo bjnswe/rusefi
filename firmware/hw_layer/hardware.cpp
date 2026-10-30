@@ -220,8 +220,10 @@ void applyNewHardwareSettings() {
 #endif /* EFI_EMULATE_POSITION_SENSORS */
 #if !defined(EFI_LOGIC_ANALYZER)
     #warning "EFI_LOGIC_ANALYZER is not defined!"
+    efiPrintf("EFI_LOGIC_ANALYZER is not defined!");
 #elif EFI_LOGIC_ANALYZER == 0
     #warning "EFI_LOGIC_ANALYZER is 0!"
+    efiPrintf("EFI_LOGIC_ANALYZER is 0!");
 #else
 	startLogicAnalyzerPins();
 #endif /* EFI_LOGIC_ANALYZER */
