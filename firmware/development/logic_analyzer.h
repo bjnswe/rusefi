@@ -11,7 +11,8 @@
 
 #if !defined(EFI_LOGIC_ANALYZER)
     #pragma message("EFI_LOGIC_ANALYZER is not defined!")
-#elif EFI_LOGIC_ANALYZER == 0
+#endif
+if EFI_LOGIC_ANALYZER == 0
     #pragma message("EFI_LOGIC_ANALYZER is 0!")
 #else
 
