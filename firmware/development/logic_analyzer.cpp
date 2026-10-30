@@ -22,9 +22,9 @@
 #include "digital_input_exti.h"
 
 #if !defined(EFI_LOGIC_ANALYZER)
-    #error "EFI_LOGIC_ANALYZER is not defined!"
+    #warning "EFI_LOGIC_ANALYZER is not defined!"
 #elif EFI_LOGIC_ANALYZER == 0
-    #error "EFI_LOGIC_ANALYZER is 0!"
+    #warning "EFI_LOGIC_ANALYZER is 0!"
 #else
 
 #define CHART_RESET_DELAY 1

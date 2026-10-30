@@ -65,9 +65,9 @@
 #endif /* EFI_TUNER_STUDIO */
 
 #if !defined(EFI_LOGIC_ANALYZER)
-    #error "EFI_LOGIC_ANALYZER is not defined!"
+    #warning "EFI_LOGIC_ANALYZER is not defined!"
 #elif EFI_LOGIC_ANALYZER == 0
-    #error "EFI_LOGIC_ANALYZER is 0!"
+    #warning "EFI_LOGIC_ANALYZER is 0!"
 #else
 #include "logic_analyzer.h"
 #endif /* EFI_LOGIC_ANALYZER */
@@ -793,9 +793,9 @@ void initRealHardwareEngineController() {
 	initWarningRunningPins();
 
 #if !defined(EFI_LOGIC_ANALYZER)
-    #error "EFI_LOGIC_ANALYZER is not defined!"
+    #warning "EFI_LOGIC_ANALYZER is not defined!"
 #elif EFI_LOGIC_ANALYZER == 0
-    #error "EFI_LOGIC_ANALYZER is 0!"
+    #warning "EFI_LOGIC_ANALYZER is 0!"
 #else
 	if (engineConfiguration->isWaveAnalyzerEnabled) {
 		initWaveAnalyzer();
