@@ -219,10 +219,10 @@ void applyNewHardwareSettings() {
 	startTriggerEmulatorPins();
 #endif /* EFI_EMULATE_POSITION_SENSORS */
 #if !defined(EFI_LOGIC_ANALYZER)
-    #warning "EFI_LOGIC_ANALYZER is not defined!"
+    #pragma message("EFI_LOGIC_ANALYZER is not defined!")
     efiPrintf("EFI_LOGIC_ANALYZER is not defined!");
 #elif EFI_LOGIC_ANALYZER == 0
-    #warning "EFI_LOGIC_ANALYZER is 0!"
+    #pragma message("EFI_LOGIC_ANALYZER is 0!")
     efiPrintf("EFI_LOGIC_ANALYZER is 0!");
 #else
 	startLogicAnalyzerPins();
@@ -318,9 +318,9 @@ void stopHardware() {
 #endif /* (BOARD_EXT_GPIOCHIPS > 0) */
 
 #if !defined(EFI_LOGIC_ANALYZER)
-    #warning "EFI_LOGIC_ANALYZER is not defined!"
+    #pragma message("EFI_LOGIC_ANALYZER is not defined!")
 #elif EFI_LOGIC_ANALYZER == 0
-    #warning "EFI_LOGIC_ANALYZER is 0!"
+    #pragma message("EFI_LOGIC_ANALYZER is 0!")
 #else
 	stopLogicAnalyzerPins();
 #endif /* EFI_LOGIC_ANALYZER */

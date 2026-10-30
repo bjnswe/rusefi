@@ -10,9 +10,9 @@
 #include "global.h"
 
 #if !defined(EFI_LOGIC_ANALYZER)
-    #warning "EFI_LOGIC_ANALYZER is not defined!"
+    #pragma message("EFI_LOGIC_ANALYZER is not defined!")
 #elif EFI_LOGIC_ANALYZER == 0
-    #warning "EFI_LOGIC_ANALYZER is 0!"
+    #pragma message("EFI_LOGIC_ANALYZER is 0!")
 #else
 
 #include "engine_sniffer.h"
