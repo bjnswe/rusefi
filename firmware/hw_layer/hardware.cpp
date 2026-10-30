@@ -219,8 +219,7 @@ void applyNewHardwareSettings() {
 	startTriggerEmulatorPins();
 #endif /* EFI_EMULATE_POSITION_SENSORS */
 #if !defined(EFI_LOGIC_ANALYZER)
-    #pragma message("EFI_LOGIC_ANALYZER is not defined! Let's define it")
-    #define EFI_LOGIC_ANALYZER TRUE
+    #pragma message("EFI_LOGIC_ANALYZER is not defined!")
     efiPrintf("EFI_LOGIC_ANALYZER is not defined!");
 #endif
 if EFI_LOGIC_ANALYZER == 0
