@@ -31,7 +31,7 @@
 #if !defined(EFI_LOGIC_ANALYZER)
     #pragma message("EFI_LOGIC_ANALYZER is not defined!")
 #endif
-if EFI_LOGIC_ANALYZER == 0
+#if EFI_LOGIC_ANALYZER == 0
     #pragma message("EFI_LOGIC_ANALYZER is 0!")
 #else
 #include "logic_analyzer.h"
@@ -178,7 +178,7 @@ void printOverallStatus() {
 #if !defined(EFI_LOGIC_ANALYZER)
     #pragma message("EFI_LOGIC_ANALYZER is not defined!")
 #endif
-if EFI_LOGIC_ANALYZER == 0
+#if EFI_LOGIC_ANALYZER == 0
     #pragma message("EFI_LOGIC_ANALYZER is 0!")
 #else
 static char logicAnalyzerBuffer[LOGIC_ANALYZER_BUFFER_SIZE];
@@ -226,7 +226,7 @@ static systime_t timeOfPreviousReport = (systime_t) -1;
 #if !defined(EFI_LOGIC_ANALYZER)
     #pragma message("EFI_LOGIC_ANALYZER is not defined!")
 #endif
-if EFI_LOGIC_ANALYZER == 0
+#if EFI_LOGIC_ANALYZER == 0
     #pragma message("EFI_LOGIC_ANALYZER is 0!")
 #else
 	printWave(&logicAnalyzerLogger);
@@ -787,7 +787,7 @@ void updateTunerStudioState() {
 #if !defined(EFI_LOGIC_ANALYZER)
     #pragma message("EFI_LOGIC_ANALYZER is not defined!")
 #endif
-if EFI_LOGIC_ANALYZER == 0
+#if EFI_LOGIC_ANALYZER == 0
     #pragma message("EFI_LOGIC_ANALYZER is 0!")
 #else
     // used by HW CI
