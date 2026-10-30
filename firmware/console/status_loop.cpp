@@ -28,7 +28,11 @@
 #include "status_loop.h"
 #include "electronic_throttle.h"
 
-#if EFI_LOGIC_ANALYZER
+#if !defined(EFI_LOGIC_ANALYZER)
+    #error "EFI_LOGIC_ANALYZER is not defined!"
+#elif EFI_LOGIC_ANALYZER == 0
+    #error "EFI_LOGIC_ANALYZER is 0!"
+#else
 #include "logic_analyzer.h"
 #endif /* EFI_LOGIC_ANALYZER */
 
@@ -170,7 +174,11 @@ void printOverallStatus() {
 #define LOGIC_ANALYZER_BUFFER_SIZE 1000
 #endif /* LOGIC_ANALYZER_BUFFER_SIZE */
 
-#if EFI_LOGIC_ANALYZER
+#if !defined(EFI_LOGIC_ANALYZER)
+    #error "EFI_LOGIC_ANALYZER is not defined!"
+#elif EFI_LOGIC_ANALYZER == 0
+    #error "EFI_LOGIC_ANALYZER is 0!"
+#else
 static char logicAnalyzerBuffer[LOGIC_ANALYZER_BUFFER_SIZE];
 static Logging logicAnalyzerLogger("logic analyzer", logicAnalyzerBuffer, sizeof(logicAnalyzerBuffer));
 #endif // EFI_LOGIC_ANALYZER
@@ -213,7 +221,11 @@ static systime_t timeOfPreviousReport = (systime_t) -1;
 	chThdSleepMilliseconds(200);
 #endif
 
-#if EFI_LOGIC_ANALYZER
+#if !defined(EFI_LOGIC_ANALYZER)
+    #error "EFI_LOGIC_ANALYZER is not defined!"
+#elif EFI_LOGIC_ANALYZER == 0
+    #error "EFI_LOGIC_ANALYZER is 0!"
+#else
 	printWave(&logicAnalyzerLogger);
 	scheduleLogging(&logicAnalyzerLogger);
 #endif /* EFI_LOGIC_ANALYZER */
@@ -769,7 +781,11 @@ void updateTunerStudioState() {
 
 	switch (engineConfiguration->debugMode)	{
 	case DBG_LOGIC_ANALYZER:
-#if EFI_LOGIC_ANALYZER
+#if !defined(EFI_LOGIC_ANALYZER)
+    #error "EFI_LOGIC_ANALYZER is not defined!"
+#elif EFI_LOGIC_ANALYZER == 0
+    #error "EFI_LOGIC_ANALYZER is 0!"
+#else
     // used by HW CI
 		reportLogicAnalyzerToTS();
 #endif /* EFI_LOGIC_ANALYZER */

@@ -218,7 +218,11 @@ void applyNewHardwareSettings() {
 #if EFI_EMULATE_POSITION_SENSORS
 	startTriggerEmulatorPins();
 #endif /* EFI_EMULATE_POSITION_SENSORS */
-#if EFI_LOGIC_ANALYZER
+#if !defined(EFI_LOGIC_ANALYZER)
+    #error "EFI_LOGIC_ANALYZER is not defined!"
+#elif EFI_LOGIC_ANALYZER == 0
+    #error "EFI_LOGIC_ANALYZER is 0!"
+#else
 	startLogicAnalyzerPins();
 #endif /* EFI_LOGIC_ANALYZER */
 #if EFI_VVT_PID
@@ -311,7 +315,11 @@ void stopHardware() {
 	stopSmartCsPins();
 #endif /* (BOARD_EXT_GPIOCHIPS > 0) */
 
-#if EFI_LOGIC_ANALYZER
+#if !defined(EFI_LOGIC_ANALYZER)
+    #error "EFI_LOGIC_ANALYZER is not defined!"
+#elif EFI_LOGIC_ANALYZER == 0
+    #error "EFI_LOGIC_ANALYZER is 0!"
+#else
 	stopLogicAnalyzerPins();
 #endif /* EFI_LOGIC_ANALYZER */
 

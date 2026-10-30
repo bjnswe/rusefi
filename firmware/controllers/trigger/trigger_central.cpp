@@ -960,7 +960,11 @@ void TriggerCentral::handleShaftSignal(trigger_event_e signal, efitick_t timesta
 		// Schedule the TDC mark
 		tdcMarkCallback(triggerIndexForListeners, timestamp);
 
-#if EFI_LOGIC_ANALYZER
+#if !defined(EFI_LOGIC_ANALYZER)
+    #error "EFI_LOGIC_ANALYZER is not defined!"
+#elif EFI_LOGIC_ANALYZER == 0
+    #error "EFI_LOGIC_ANALYZER is 0!"
+#else
 		waTriggerEventListener(signal, triggerIndexForListeners, timestamp);
 #endif
 
