@@ -801,7 +801,11 @@ void initRealHardwareEngineController() {
     #pragma message("EFI_LOGIC_ANALYZER is 0!")
     efiPrintf("EFI_LOGIC_ANALYZER is 0!");
 #else
-	startLogicAnalyzerPins();
+  if (engineConfiguration->isWaveAnalyzerEnabled) {
+          initWaveAnalyzer();
+          startLogicAnalyzerPins();
+  }
+
 #endif /* EFI_LOGIC_ANALYZER */
 
 	if (hasFirmwareError()) {
