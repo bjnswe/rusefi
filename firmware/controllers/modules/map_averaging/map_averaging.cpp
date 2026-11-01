@@ -469,11 +469,11 @@ void dumpCylinderPressureTrace() {
 		chibios_rt::CriticalSectionLocker csl;
 		memcpy(trace, completedPressureTrace, sizeof(trace));
 	}
-	efiPrintf("# ready=%d dma_overruns=%u trigger_drops=%u", completedPressureTraceReady ? 1 : 0,
-		pressureDmaOverruns, pressureTriggerQueueDrops);
+	efiPrintf("# ready=%d dma_overruns=%lu trigger_drops=%lu", completedPressureTraceReady ? 1 : 0,
+		static_cast<unsigned long>(pressureDmaOverruns), static_cast<unsigned long>(pressureTriggerQueueDrops));
 	efiPrintf("angle_deg,raw_adc");
 	for (int i = 0; i < cylinder_pressure::AngleBinCount; i++) {
-		efiPrintf("%d,%u", i, trace[i]);
+		efiPrintf("%d,%u", i, static_cast<unsigned int>(trace[i]));
 	}
 #else
 	efiPrintf("Cylinder pressure capture is unavailable on this build");
