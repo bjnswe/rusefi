@@ -76,3 +76,6 @@ public:
 	void submitSample(float voltsMap1, float voltsMap2);
 	mapSampler samplers[MAX_CYLINDER_COUNT];
 };
+
+// Raw 720-degree trace export. The command emits one CSV row per degree.
+void dumpCylinderPressureTrace();

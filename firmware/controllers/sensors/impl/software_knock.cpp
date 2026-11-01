@@ -111,6 +111,11 @@ public:
 static KnockThread kt;
 
 void initSoftwareKnock() {
+#if EFI_CYLINDER_PRESSURE
+	// uaEFI Pro routes this ADC input to crank-angle pressure acquisition.
+	// Do not claim the pin or start knock sampling on the same ADC driver.
+	return;
+#else
 	if (engineConfiguration->enableSoftwareKnock) {
 
 		float frequencyHz;
@@ -173,6 +178,7 @@ void initSoftwareKnock() {
 #endif
 		kt.start();
 	}
+#endif // EFI_CYLINDER_PRESSURE
 }
 
 #ifdef KNOCK_SPECTROGRAM
