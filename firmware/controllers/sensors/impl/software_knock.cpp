@@ -43,7 +43,7 @@ static SpectrogramData* spectrogramData = &spectrogramData0;
 #endif //KNOCK_SPECTROGRAM
 
 
-static NO_CACHE adcsample_t sampleBuffer[1800];
+NO_CACHE adcsample_t softwareKnockSampleBuffer[SoftwareKnockSampleBufferSize];
 static int8_t currentCylinderNumber = 0;
 static int8_t channelNumber = 0;
 static efitick_t lastKnockSampleTime = 0;
@@ -87,7 +87,7 @@ void onStartKnockSampling(uint8_t cylinderNumber, float samplingSeconds, uint8_t
 
 	// Convert sampling time to number of samples
 	constexpr int sampleRate = KNOCK_SAMPLE_RATE;
-	sampleCount = 0xFFFFFFFE & static_cast<size_t>(clampF(100, samplingSeconds * sampleRate, efi::size(sampleBuffer)));
+	sampleCount = 0xFFFFFFFE & static_cast<size_t>(clampF(100, samplingSeconds * sampleRate, efi::size(softwareKnockSampleBuffer)));
 
 	// Select the appropriate conversion group - it will differ depending on which sensor this cylinder should listen on
 	auto conversionGroup = getKnockConversionGroup(channelIdx);
@@ -98,7 +98,7 @@ void onStartKnockSampling(uint8_t cylinderNumber, float samplingSeconds, uint8_t
 	// Stash the current cylinder's number so we can store the result appropriately
 	currentCylinderNumber = cylinderNumber;
 
-	adcStartConversionI(&KNOCK_ADC, conversionGroup, sampleBuffer, sampleCount);
+	adcStartConversionI(&KNOCK_ADC, conversionGroup, softwareKnockSampleBuffer, sampleCount);
 	lastKnockSampleTime = getTimeNowNt();
 }
 
@@ -216,7 +216,7 @@ static void processLastKnockEvent() {
 
 	// Compute the sum of squares
 	for (size_t i = 0; i < localCount; i++) {
-		float volts = ratio * sampleBuffer[i];
+		float volts = ratio * softwareKnockSampleBuffer[i];
 
 		float filtered = knockFilter.filter(volts);
 //		if (i == localCount - 1 && engineConfiguration->debugMode == DBG_KNOCK) {
@@ -238,9 +238,9 @@ static void processLastKnockEvent() {
 		ScopePerf perf(PE::KnockAnalyzer);
 
 		if (engineConfiguration->enableKnockSpectrogramFilter) {
-			fft::fft_adc_sample_filtered(knockFilter, spectrogramData->window, ratio, engineConfiguration->knockSpectrumSensitivity, sampleBuffer, spectrogramData->fftBuffer, FFT_SIZE);
+			fft::fft_adc_sample_filtered(knockFilter, spectrogramData->window, ratio, engineConfiguration->knockSpectrumSensitivity, softwareKnockSampleBuffer, spectrogramData->fftBuffer, FFT_SIZE);
 		} else {
-			fft::fft_adc_sample(spectrogramData->window, ratio, engineConfiguration->knockSpectrumSensitivity, sampleBuffer, spectrogramData->fftBuffer, FFT_SIZE);
+			fft::fft_adc_sample(spectrogramData->window, ratio, engineConfiguration->knockSpectrumSensitivity, softwareKnockSampleBuffer, spectrogramData->fftBuffer, FFT_SIZE);
 		}
 
 		auto* spectrum = &engine->module<KnockController>()->m_knockSpectrum[0];

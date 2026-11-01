@@ -12,6 +12,9 @@
 
 #define FFT_SIZE 1024
 
+constexpr size_t SoftwareKnockSampleBufferSize = 1800;
+extern adcsample_t softwareKnockSampleBuffer[SoftwareKnockSampleBufferSize];
+
 struct SpectrogramData {
 	fft::complex_type fftBuffer[FFT_SIZE];
 	float window[FFT_SIZE];

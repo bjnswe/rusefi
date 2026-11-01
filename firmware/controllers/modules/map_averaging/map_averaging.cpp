@@ -27,6 +27,7 @@
 
 #if EFI_PROD_CODE && EFI_CYLINDER_PRESSURE && HAL_USE_ADC && !defined(STM32H7XX)
 #include "knock_config.h"
+#include "software_knock.h"
 #endif
 
 
@@ -43,10 +44,9 @@
 // ADC3 runs continuously into a circular DMA buffer. DMA callbacks only publish
 // completed half-buffer boundaries; angle interpolation and accumulation happen
 // from the regular engine callback, outside interrupt context.
-static constexpr size_t PressureDmaSize = 4096;
+static constexpr size_t PressureDmaSize = SoftwareKnockSampleBufferSize;
 static constexpr size_t PressureDmaHalfSize = PressureDmaSize / 2;
 static constexpr size_t TriggerPointQueueSize = 128;
-static NO_CACHE adcsample_t pressureDmaBuffer[PressureDmaSize];
 static volatile uint64_t pressureDmaSamplesReady;
 static volatile efitick_t pressureDmaBoundaryTime;
 static volatile uint32_t pressureDmaOverruns;
@@ -115,7 +115,7 @@ static void startPressureAdc() {
 	pressureTriggerHead = 0;
 	pressureTriggerTail = 0;
 	efiSetPadMode("cylinder pressure", KNOCK_PIN_CH1, PAL_MODE_INPUT_ANALOG);
-	adcStartConversion(&KNOCK_ADC, &pressureAdcGroup, pressureDmaBuffer, PressureDmaSize);
+	adcStartConversion(&KNOCK_ADC, &pressureAdcGroup, softwareKnockSampleBuffer, PressureDmaSize);
 	addConsoleAction("cylinder_pressure_dump", dumpCylinderPressureTrace);
 }
 
@@ -209,7 +209,7 @@ static void processPressureSamples() {
 					memcpy(completedPressureTrace, pressureTraceStaging, sizeof(completedPressureTrace));
 					completedPressureTraceReady = true;
 				}
-				pressureAccumulator.add(pressureDmaBuffer[
+				pressureAccumulator.add(softwareKnockSampleBuffer[
 					cylinder_pressure::dmaRingIndex(sampleIndex, PressureDmaSize)], angle);
 				previousPressureBin = bin;
 				havePreviousPressureBin = true;
