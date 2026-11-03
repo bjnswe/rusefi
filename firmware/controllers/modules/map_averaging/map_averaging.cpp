@@ -23,6 +23,12 @@
 
 #include "pch.h"
 #include "exp_average.h"
+#include "cylinder_pressure_core.h"
+
+#if EFI_PROD_CODE && EFI_CYLINDER_PRESSURE && HAL_USE_ADC && !defined(STM32H7XX)
+#include "knock_config.h"
+#include "software_knock.h"
+#endif
 
 
 #if EFI_MAP_AVERAGING && defined (MODULE_MAP_AVERAGING)
@@ -32,6 +38,219 @@
 
 #include "map_averaging.h"
 #include "trigger_central.h"
+
+#if EFI_PROD_CODE && EFI_CYLINDER_PRESSURE && HAL_USE_ADC && !defined(STM32H7XX)
+
+// ADC3 runs continuously into a circular DMA buffer. DMA callbacks only publish
+// completed half-buffer boundaries; angle interpolation and accumulation happen
+// from the regular engine callback, outside interrupt context.
+static constexpr size_t PressureDmaSize = SoftwareKnockSampleBufferSize;
+static constexpr size_t PressureDmaHalfSize = PressureDmaSize / 2;
+static constexpr size_t TriggerPointQueueSize = 128;
+static volatile uint32_t pressureDmaSamplesReady;
+static volatile uint32_t pressureDmaBoundaryTime;
+static volatile uint16_t pressureDmaBoundaryIndex;
+static volatile uint32_t pressureDmaOverruns;
+static volatile uint32_t pressureTriggerQueueDrops;
+static cylinder_pressure::TriggerPoint pressureTriggerPoints[TriggerPointQueueSize];
+static volatile uint32_t pressureTriggerHead;
+static volatile uint32_t pressureTriggerTail;
+static uint32_t pressureProcessedSamples;
+static cylinder_pressure::TriggerPoint previousPressureTrigger{};
+static bool havePreviousPressureTrigger;
+static bool havePreviousPressureBin;
+static int previousPressureBin;
+static cylinder_pressure::Accumulator pressureAccumulator;
+static uint16_t pressureTraceStaging[cylinder_pressure::AngleBinCount];
+static uint16_t completedPressureTrace[cylinder_pressure::AngleBinCount] = {};
+static volatile bool completedPressureTraceReady;
+static volatile bool pressureDumpInProgress;
+static volatile bool pressureDiscardUntilCycleEnd;
+
+static void pressureAdcCallback(ADCDriver* adcp) {
+	UNUSED(adcp);
+	pressureDmaSamplesReady += PressureDmaHalfSize;
+	pressureDmaBoundaryIndex = pressureDmaBoundaryIndex == 0
+		? static_cast<uint16_t>(PressureDmaHalfSize) : 0;
+	pressureDmaBoundaryTime = getTimeNowLowerNt();
+}
+
+static void pressureAdcErrorCallback(ADCDriver*, adcerror_t) {
+	pressureDmaOverruns++;
+}
+
+static const uint32_t pressureSmpr1 =
+	ADC_SMPR1_SMP_AN10(KNOCK_SAMPLE_TIME) | ADC_SMPR1_SMP_AN11(KNOCK_SAMPLE_TIME) |
+	ADC_SMPR1_SMP_AN12(KNOCK_SAMPLE_TIME) | ADC_SMPR1_SMP_AN13(KNOCK_SAMPLE_TIME) |
+	ADC_SMPR1_SMP_AN14(KNOCK_SAMPLE_TIME) | ADC_SMPR1_SMP_AN15(KNOCK_SAMPLE_TIME);
+
+static const uint32_t pressureSmpr2 =
+	ADC_SMPR2_SMP_AN0(KNOCK_SAMPLE_TIME) | ADC_SMPR2_SMP_AN1(KNOCK_SAMPLE_TIME) |
+	ADC_SMPR2_SMP_AN2(KNOCK_SAMPLE_TIME) | ADC_SMPR2_SMP_AN3(KNOCK_SAMPLE_TIME) |
+	ADC_SMPR2_SMP_AN4(KNOCK_SAMPLE_TIME) | ADC_SMPR2_SMP_AN5(KNOCK_SAMPLE_TIME) |
+	ADC_SMPR2_SMP_AN6(KNOCK_SAMPLE_TIME) | ADC_SMPR2_SMP_AN7(KNOCK_SAMPLE_TIME) |
+	ADC_SMPR2_SMP_AN8(KNOCK_SAMPLE_TIME) | ADC_SMPR2_SMP_AN9(KNOCK_SAMPLE_TIME);
+
+static const ADCConversionGroup pressureAdcGroup = {
+	.circular = TRUE,
+	.num_channels = 1,
+	.end_cb = pressureAdcCallback,
+	.error_cb = pressureAdcErrorCallback,
+	.cr1 = 0,
+	.cr2 = ADC_CR2_SWSTART,
+	.smpr1 = pressureSmpr1,
+	.smpr2 = pressureSmpr2,
+	.htr = 0,
+	.ltr = 0,
+	.sqr1 = 0,
+	.sqr2 = 0,
+	.sqr3 = ADC_SQR3_SQ1_N(KNOCK_ADC_CH1),
+};
+
+static void startPressureAdc() {
+	if (KNOCK_ADC.state != ADC_READY && KNOCK_ADC.state != ADC_ERROR) {
+		warning(ObdCode::CUSTOM_ERR_UNEXPECTED_SHAFT_EVENT, "Pressure ADC3 already in use");
+		return;
+	}
+
+	pressureDmaSamplesReady = 0;
+	pressureDmaBoundaryIndex = 0;
+	pressureProcessedSamples = 0;
+	pressureDmaOverruns = 0;
+	pressureTriggerQueueDrops = 0;
+	pressureTriggerHead = 0;
+	pressureTriggerTail = 0;
+	efiSetPadMode("cylinder pressure", KNOCK_PIN_CH1, PAL_MODE_INPUT_ANALOG);
+	adcStartConversion(&KNOCK_ADC, &pressureAdcGroup, softwareKnockSampleBuffer, PressureDmaSize);
+	addConsoleAction("cylinder_pressure_dump", dumpCylinderPressureTrace);
+}
+
+static void queuePressureTrigger(uint32_t timestamp, float angle) {
+	const uint32_t head = pressureTriggerHead;
+	const uint32_t tail = pressureTriggerTail;
+	if (head - tail >= TriggerPointQueueSize) {
+		pressureTriggerQueueDrops++;
+		return;
+	}
+	pressureTriggerPoints[head % TriggerPointQueueSize] = {
+		timestamp, angle
+	};
+	pressureTriggerHead = head + 1;
+}
+
+static void processPressureSamples() {
+	uint32_t produced;
+	uint32_t boundaryTime;
+	uint16_t boundaryIndex;
+	{
+		chibios_rt::CriticalSectionLocker csl;
+		produced = pressureDmaSamplesReady;
+		boundaryTime = pressureDmaBoundaryTime;
+		boundaryIndex = pressureDmaBoundaryIndex;
+	}
+	if (engine->rpmCalculator.getCachedRpm() <= 0) {
+		pressureProcessedSamples = produced;
+		havePreviousPressureTrigger = false;
+		havePreviousPressureBin = false;
+		pressureAccumulator.clear();
+		pressureDiscardUntilCycleEnd = false;
+		pressureTriggerTail = pressureTriggerHead;
+		return;
+	}
+
+	// If DMA has advanced one complete ring or more beyond the consumer, the
+	// oldest unread sample is being overwritten. Discard stale data and resync.
+	if (cylinder_pressure::dmaConsumerOverrun(produced, pressureProcessedSamples,
+			PressureDmaSize)) {
+		pressureDmaOverruns++;
+		pressureProcessedSamples = produced - PressureDmaHalfSize;
+		havePreviousPressureTrigger = false;
+		havePreviousPressureBin = false;
+		pressureAccumulator.clear();
+		pressureTriggerTail = pressureTriggerHead;
+	}
+
+	const float samplePeriodNt = float(US_TO_NT_MULTIPLIER) * 1000000.0f / KNOCK_SAMPLE_RATE;
+	const float cycleAngle = engine->engineState.engineCycle;
+	if (cycleAngle != cylinder_pressure::AngleBinCount || samplePeriodNt <= 0) {
+		return;
+	}
+
+	while (pressureTriggerTail != pressureTriggerHead) {
+		const auto point = pressureTriggerPoints[pressureTriggerTail % TriggerPointQueueSize];
+		if (!havePreviousPressureTrigger) {
+			previousPressureTrigger = point;
+			havePreviousPressureTrigger = true;
+			pressureTriggerTail++;
+			continue;
+		}
+
+		if (static_cast<int32_t>(point.time - previousPressureTrigger.time) <= 0) {
+			previousPressureTrigger = point;
+			pressureTriggerTail++;
+			continue;
+		}
+
+		const uint32_t newestSampleTime = boundaryTime;
+		if (static_cast<int32_t>(point.time - newestSampleTime) > 0) {
+			break;
+		}
+
+		while (pressureProcessedSamples != produced) {
+			const uint32_t sampleIndex = pressureProcessedSamples;
+			const uint32_t sampleTime = boundaryTime - static_cast<uint32_t>(
+				float(produced - 1 - sampleIndex) * samplePeriodNt);
+			if (static_cast<int32_t>(sampleTime - point.time) > 0) {
+				break;
+			}
+
+			float angle;
+			if (static_cast<int32_t>(sampleTime - previousPressureTrigger.time) >= 0 &&
+				cylinder_pressure::interpolateAngle(sampleTime,
+					previousPressureTrigger, point, cycleAngle, angle)) {
+				const int bin = static_cast<int>(angle);
+				if (havePreviousPressureBin && bin < previousPressureBin) {
+					if (pressureDumpInProgress || pressureDiscardUntilCycleEnd) {
+						pressureAccumulator.clear();
+						if (!pressureDumpInProgress) {
+							pressureDiscardUntilCycleEnd = false;
+						}
+					} else {
+						pressureAccumulator.finishCycle(pressureTraceStaging);
+						chibios_rt::CriticalSectionLocker csl;
+						if (!pressureDumpInProgress) {
+							memcpy(completedPressureTrace, pressureTraceStaging, sizeof(completedPressureTrace));
+							completedPressureTraceReady = true;
+						}
+					}
+				}
+				if (!pressureDumpInProgress && !pressureDiscardUntilCycleEnd) {
+					pressureAccumulator.add(softwareKnockSampleBuffer[
+						cylinder_pressure::dmaRingIndexAtBoundary(sampleIndex, produced,
+							boundaryIndex, PressureDmaSize)], angle);
+				}
+				previousPressureBin = bin;
+				havePreviousPressureBin = true;
+			}
+
+			pressureProcessedSamples++;
+		}
+
+		if (pressureProcessedSamples == produced) {
+			previousPressureTrigger = point;
+			pressureTriggerTail++;
+		} else {
+			const uint32_t nextSampleTime = boundaryTime - static_cast<uint32_t>(
+				float(produced - pressureProcessedSamples) * samplePeriodNt);
+			if (static_cast<int32_t>(nextSampleTime - point.time) > 0) {
+				previousPressureTrigger = point;
+				pressureTriggerTail++;
+			}
+		}
+	}
+}
+
+#endif // F7 continuous pressure acquisition
 
 
 /**
@@ -176,6 +395,9 @@ static void applyMapMinBufferLength() {
 }
 
 void MapAveragingModule::onFastCallback() {
+#if EFI_PROD_CODE && EFI_CYLINDER_PRESSURE && HAL_USE_ADC && !defined(STM32H7XX)
+	processPressureSamples();
+#endif
 	float rpm = Sensor::getOrZero(SensorType::Rpm);
     MAP_sensor_config_s * c = &engineConfiguration->map;
     angle_t start = interpolate2d(rpm, c->samplingAngleBins, c->samplingAngle);
@@ -200,6 +422,9 @@ void MapAveragingModule::onEnginePhase(float /*rpm*/,
 						efitick_t edgeTimestamp,
 						float currentPhase,
 						float nextPhase) {
+#if EFI_PROD_CODE && EFI_CYLINDER_PRESSURE && HAL_USE_ADC && !defined(STM32H7XX)
+	queuePressureTrigger(static_cast<uint32_t>(edgeTimestamp), currentPhase);
+#endif
 	if (!engineConfiguration->isMapAveragingEnabled) {
 		return;
 	}
@@ -243,6 +468,9 @@ void MapAveragingModule::init() {
 	} else {
 		efiPrintf("Running without MapAveraging...");
 	}
+#if EFI_PROD_CODE && EFI_CYLINDER_PRESSURE && HAL_USE_ADC && !defined(STM32H7XX)
+	startPressureAdc();
+#endif
 }
 
 #else
@@ -251,3 +479,36 @@ void MapAveragingModule::onConfigurationChange(engine_configuration_s const *){}
 void MapAveragingModule::init() {}
 void MapAveragingModule::onEnginePhase(float, efitick_t, float, float){}
 #endif /* EFI_MAP_AVERAGING */
+
+void dumpCylinderPressureTrace() {
+#if EFI_MAP_AVERAGING && defined(MODULE_MAP_AVERAGING) && EFI_PROD_CODE && EFI_CYLINDER_PRESSURE && HAL_USE_ADC && !defined(STM32H7XX)
+	bool traceReady;
+	uint32_t dmaOverruns;
+	uint32_t triggerDrops;
+	{
+		chibios_rt::CriticalSectionLocker csl;
+		pressureDumpInProgress = true;
+		traceReady = completedPressureTraceReady;
+		dmaOverruns = pressureDmaOverruns;
+		triggerDrops = pressureTriggerQueueDrops;
+	}
+	efiPrintf("# ready=%d dma_overruns=%lu trigger_drops=%lu", traceReady ? 1 : 0,
+		static_cast<unsigned long>(dmaOverruns), static_cast<unsigned long>(triggerDrops));
+	efiPrintf("angle_deg,raw_adc");
+	for (int i = 0; i < cylinder_pressure::AngleBinCount; i++) {
+		uint16_t value;
+		{
+			chibios_rt::CriticalSectionLocker csl;
+			value = completedPressureTrace[i];
+		}
+		efiPrintf("%d,%u", i, static_cast<unsigned int>(value));
+	}
+	{
+		chibios_rt::CriticalSectionLocker csl;
+		pressureDumpInProgress = false;
+		pressureDiscardUntilCycleEnd = true;
+	}
+#else
+	efiPrintf("Cylinder pressure capture is unavailable on this build");
+#endif
+}

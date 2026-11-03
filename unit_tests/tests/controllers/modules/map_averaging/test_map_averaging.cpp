@@ -7,10 +7,63 @@
 
 #include "pch.h"
 #include "map_averaging.h"
+#include "cylinder_pressure_core.h"
 #include "harley.h"
 
 namespace {
 	auto const startAveragingAction{ action_s::make<startAveraging>((mapSampler*){}) };
+}
+
+TEST(CylinderPressure, InterpolatesAcrossCycleWrapAndMissingToothGap) {
+	cylinder_pressure::TriggerPoint before{1000, 710};
+	cylinder_pressure::TriggerPoint after{1300, 20};
+	float angle = -1;
+
+	ASSERT_TRUE(cylinder_pressure::interpolateAngle(1150, before, after, 720, angle));
+	EXPECT_NEAR(5, angle, 0.001f);
+
+	// The larger time and angle gap models interpolation across a missing-tooth gap.
+	cylinder_pressure::TriggerPoint gapEnd{1900, 80};
+	ASSERT_TRUE(cylinder_pressure::interpolateAngle(1600, after, gapEnd, 720, angle));
+	EXPECT_NEAR(50, angle, 0.001f);
+}
+
+TEST(CylinderPressure, InterpolatesWithChangingCrankSpeed) {
+	cylinder_pressure::TriggerPoint first{100, 0};
+	cylinder_pressure::TriggerPoint second{200, 90};
+	cylinder_pressure::TriggerPoint third{400, 180};
+	float angle = -1;
+
+	ASSERT_TRUE(cylinder_pressure::interpolateAngle(150, first, second, 720, angle));
+	EXPECT_NEAR(45, angle, 0.001f);
+	ASSERT_TRUE(cylinder_pressure::interpolateAngle(300, second, third, 720, angle));
+	EXPECT_NEAR(135, angle, 0.001f);
+}
+
+TEST(CylinderPressure, AccumulatesPerDegreeAndClearsEmptyBins) {
+	cylinder_pressure::Accumulator accumulator;
+	uint16_t result[cylinder_pressure::AngleBinCount] = {};
+
+	accumulator.add(100, 0.1f);
+	accumulator.add(200, 0.9f);
+	accumulator.add(500, 719.9f);
+	accumulator.finishCycle(result);
+
+	EXPECT_EQ(150, result[0]);
+	EXPECT_EQ(0, result[1]);
+	EXPECT_EQ(500, result[719]);
+
+	accumulator.add(50, 0.5f);
+	accumulator.finishCycle(result);
+	EXPECT_EQ(50, result[0]);
+	EXPECT_EQ(0, result[719]);
+}
+
+TEST(CylinderPressure, DetectsDmaOverrunAndWrapsRingIndex) {
+	EXPECT_FALSE(cylinder_pressure::dmaConsumerOverrun(4095, 0, 4096));
+	EXPECT_TRUE(cylinder_pressure::dmaConsumerOverrun(4096, 0, 4096));
+	EXPECT_EQ(0, cylinder_pressure::dmaRingIndex(4096, 4096));
+	EXPECT_EQ(7, cylinder_pressure::dmaRingIndex(4103, 4096));
 }
 
 TEST(EngineModules, MapAveragingModule_onEnginePhase) {
