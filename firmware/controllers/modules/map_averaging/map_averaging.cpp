@@ -451,17 +451,24 @@ void dumpCylinderPressureTrace() {
 		traceReady = completedPressureTraceReady;
 		dmaOverruns = pressureDmaOverruns;
 	}
-	efiPrintf("# ready=%d dma_overruns=%lu", traceReady ? 1 : 0,
+	efiPrintf("# ready=%d dma_overruns=%lu Cylinder pressure samples:", traceReady ? 1 : 0,
 		static_cast<unsigned long>(dmaOverruns));
-	efiPrintf("angle_deg,raw_adc");
-	for (int i = 0; i < cylinder_pressure::AngleBinCount; i++) {
-		uint16_t value;
-		{
-			chibios_rt::CriticalSectionLocker csl;
-			value = completedPressureTrace[i];
-		}
-		efiPrintf("%d,%u", i, static_cast<unsigned int>(value));
-	}
+  static char line[240];  
+    
+  for (int i = 0; i < cylinder_pressure::AngleBinCount; )
+  {  
+    int len = 0;  
+    for (int n = 0; n < 36 && i < cylinder_pressure::AngleBinCount; n++, i++)
+    {  
+      uint16_t value;  
+      {  
+        chibios_rt::CriticalSectionLocker csl;  
+        value = completedPressureTrace[i];  
+      }  
+      len += chsnprintf(line + len, sizeof(line) - len, "%u,", (unsigned)value);  
+    }  
+    efiPrintf("%s", line);   // one line = 36 values, implicit index  
+  }
 	{
 		chibios_rt::CriticalSectionLocker csl;
 		pressureDumpInProgress = false;
