@@ -54,7 +54,6 @@ static bool havePreviousPressureTrigger;
 static bool havePreviousPressureBin;
 static int previousPressureBin;
 static cylinder_pressure::Accumulator pressureAccumulator;
-static uint16_t completedPressureTrace[cylinder_pressure::AngleBinCount] = {};
 static volatile bool completedPressureTraceReady;
 static volatile bool pressureDumpInProgress;
 static volatile bool pressureDiscardUntilCycleEnd;
@@ -193,7 +192,7 @@ static void processPressureSamplesAtTrigger(const cylinder_pressure::TriggerPoin
 						pressureDiscardUntilCycleEnd = false;
 					}
 				} else {
-					pressureAccumulator.finishCycle(completedPressureTrace);
+					pressureAccumulator.finishCycle(engine->outputChannels.completedPressureTrace);
 					completedPressureTraceReady = true;
 				}
 			}
@@ -458,7 +457,7 @@ void dumpCylinderPressureTrace() {
       uint16_t value;  
       {  
         chibios_rt::CriticalSectionLocker csl;  
-        value = completedPressureTrace[i];  
+		value = engine->outputChannels.completedPressureTrace[i];  
       }  
       len += chsnprintf(line + len, sizeof(line) - len, "%u,", (unsigned)value);  
     }  

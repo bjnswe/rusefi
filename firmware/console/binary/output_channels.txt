@@ -486,4 +486,5 @@ float mapFast
 	float auxTemp2Resistance;Aux temp 2: measured resistance;"Ohm", 1, 0, 0, 1000000, 0
 
 	uint16_t instantRpmRange;sync: instant RPM range\nMax minus min instant RPM within the last complete engine cycle, 0 when RPM is perfectly steady;"rpm", 1, 0, 0, 65535, 0
+	uint16_t[720 iterate] autoscale completedPressureTrace;Cylinder pressure trace;"ADC", 1, 0, 0, 4095, 0
 end_struct
