@@ -62,7 +62,8 @@ inline bool interpolateAngle(uint32_t sampleTime, const TriggerPoint& before,
 
 class Accumulator {
 public:
-	static constexpr uint8_t MaxSamplesPerBin = 16;
+	static constexpr uint8_t MaxCount = 128;
+	static constexpr uint32_t MaxSum = 65535;
 
 	void add(uint16_t value, float angle) {
 		if (angle < 0 || angle >= AngleBinCount) {
@@ -70,11 +71,14 @@ public:
 		}
 
 		const int bin = static_cast<int>(angle);
-		if (counts[bin] >= MaxSamplesPerBin) {
+    uint32_t newSum = (uint32_t)sums[bin] + value;
+    
+		if ((counts[bin] >= MaxCount) ||
+        (newSum > MaxSum)         ) {
 			return;
 		}
 
-		sums[bin] += value;
+		sums[bin] = newSum;
 		counts[bin]++;
 	}
 
