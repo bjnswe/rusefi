@@ -82,7 +82,8 @@ public:
 		counts[bin]++;
 	}
 
-	void finishCycle(uint16_t* averages) {
+	template <typename T>
+	void finishCycle(T* averages) {
 		for (int i = 0; i < AngleBinCount; i++) {
 			averages[i] = counts[i] ? static_cast<uint16_t>(sums[i] / counts[i]) : 0;
 			sums[i] = 0;
