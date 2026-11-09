@@ -195,7 +195,8 @@ size_t writeSdBlock(Writer& outBuffer) {
 
 // Append one "line" to the log: the header on the first call after
 // resetFileLogging(), one data record on every later call. Called by the SD
-// thread at sdCardLogFrequency Hz (see mlgLogger() in mmc_card.cpp).
+// thread when a cylinder-pressure trace completes, with a 200 ms fallback
+// (see mlgLogger() in mmc_card.cpp).
 size_t writeSdLogLine(Writer& bufferedWriter) {
 #if EFI_PROD_CODE
 	if (!main_loop_started)

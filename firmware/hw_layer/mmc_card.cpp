@@ -39,6 +39,7 @@
 #include "status_loop.h"
 #include "binary_mlg_logging.h"
 #include "sd_log_trigger.h"
+#include "map_averaging.h"
 
 // Divide logs into 32Mb chunks.
 // When defined, every log file is pre-allocated to this size with f_expand() on create
@@ -137,6 +138,16 @@ static const char *sdModeName(SD_MODE mode) {
 
 // Log 'regular' ECU log to MLG file
 static int mlgLogger();
+
+#if EFI_CYLINDER_PRESSURE && EFI_MAP_AVERAGING && defined(MODULE_MAP_AVERAGING) && HAL_USE_ADC && !defined(STM32H7XX)
+static constexpr sysinterval_t MlgFallbackLogPeriod = TIME_MS2I(200);
+static constexpr sysinterval_t MlgTracePollPeriod = TIME_MS2I(1);
+static size_t mlgWriteCounter;
+static uint32_t lastLoggedPressureTraceSequence;
+static systime_t lastMlgLogTime;
+static bool haveLastMlgLogTime;
+static bool mlgHeaderWritten;
+#endif
 
 static bool sdLoggerInitDone = false;
 static bool sdLoggerFailed = false;
@@ -844,7 +855,7 @@ static int sdLoggerTooth(FIL *fd) {
 
 /**
  * One iteration of MLG logging: lazily creates the log file on first call, writes one
- * log line (rate-limited inside mlgLogger()), and rolls over to a new file when the
+ * pressure-triggered or 200 ms fallback record, and rolls over to a new file when the
  * current one reaches LOGGER_MAX_FILE_SIZE.
  *
  * @return positive number of bytes written, negative on error
@@ -867,6 +878,10 @@ static int sdLoggerMlg(FIL *fd) {
 			sdLoggerFailed = true;
 			return -2;
 		}
+
+#if EFI_CYLINDER_PRESSURE && EFI_MAP_AVERAGING && defined(MODULE_MAP_AVERAGING) && HAL_USE_ADC && !defined(STM32H7XX)
+		mlgHeaderWritten = false;
+#endif
 
 		sdLoggerInitDone = true;
 	}
@@ -1294,14 +1309,14 @@ die:
 RUSEFI_STACK_ROOT_EXPLICIT(MMCmonThread, mmcThreadStackSize);
 
 /**
- * Write one MLG log line and pace the logger: sleeps so that lines are written at
- * engineConfiguration->sdCardLogFrequency Hz (clamped to 1..250), and syncs the file
- * to media every F_SYNC_FREQUENCY lines rather than after every write.
+ * Write one MLG log line for each completed pressure trace. When no completed trace
+ * arrives, write a regular ECU-state record at least once every 200 ms. The pressure
+ * trace is produced in a trigger callback; this SD thread only polls its sequence
+ * counter and never performs file I/O from the callback.
  *
  * @return number of bytes written, or negative if the buffer writer has failed
  */
 static int mlgLogger() {
-	static size_t writeCounter = 0;
 	// TODO: move this check somewhere out of here!
 	// if the SPI device got un-picked somehow, cancel SD card
 	// Don't do this check at all if using SDMMC interface instead of SPI
@@ -1311,21 +1326,71 @@ static int mlgLogger() {
 	}
 #endif
 
+#if EFI_CYLINDER_PRESSURE && EFI_MAP_AVERAGING && defined(MODULE_MAP_AVERAGING) && HAL_USE_ADC && !defined(STM32H7XX)
+	if (!mlgHeaderWritten) {
+		// writeSdLogLine writes the MLG header on its first call. It can return
+		// zero before the main loop starts, so do not consume a trace sequence
+		// until the header has actually been written.
+		const size_t written = MLG::writeSdLogLine(logBuffer);
+		if (logBuffer.failed) {
+			return -1;
+		}
+		if (written == 0) {
+			return 0;
+		}
+
+		mlgHeaderWritten = true;
+		lastLoggedPressureTraceSequence = getCompletedCylinderPressureTraceSequence();
+		lastMlgLogTime = chVTGetSystemTimeX();
+		haveLastMlgLogTime = true;
+		mlgWriteCounter = 0;
+		return written;
+	}
+
+	while (true) {
+		const uint32_t pressureTraceSequence = getCompletedCylinderPressureTraceSequence();
+		const systime_t now = chVTGetSystemTimeX();
+		const bool newPressureTrace = pressureTraceSequence != lastLoggedPressureTraceSequence;
+		const bool fallbackDue = !haveLastMlgLogTime ||
+			chVTTimeElapsedSinceX(lastMlgLogTime) >= MlgFallbackLogPeriod;
+
+		if (newPressureTrace || fallbackDue) {
+			const size_t written = MLG::writeSdLogLine(logBuffer);
+
+			// Something went wrong (already handled), so cancel further writes.
+			if (logBuffer.failed) {
+				return -1;
+			}
+
+			lastLoggedPressureTraceSequence = pressureTraceSequence;
+			lastMlgLogTime = now;
+			haveLastMlgLogTime = true;
+
+			mlgWriteCounter++;
+			if (mlgWriteCounter >= F_SYNC_FREQUENCY) {
+				// Sync periodically, rather than after every record.
+				logBuffer.sync();
+				mlgWriteCounter = 0;
+			}
+
+			return written;
+		}
+
+		chThdSleep(MlgTracePollPeriod);
+	}
+#else
 	systime_t before = chVTGetSystemTime();
 
-	size_t writen = MLG::writeSdLogLine(logBuffer);
+	const size_t written = MLG::writeSdLogLine(logBuffer);
 
-	// Something went wrong (already handled), so cancel further writes
+	// Something went wrong (already handled), so cancel further writes.
 	if (logBuffer.failed) {
 		return -1;
 	}
 
+	static size_t writeCounter = 0;
 	writeCounter++;
 	if (writeCounter >= F_SYNC_FREQUENCY) {
-		/**
-		 * Performance optimization: not f_sync after each line, sync is probably a heavy operation
-		 * todo: one day someone should actually measure the relative cost of sync
-		 */
 		logBuffer.sync();
 		writeCounter = 0;
 	}
@@ -1340,7 +1405,8 @@ static int mlgLogger() {
 	systime_t period = CH_CFG_ST_FREQUENCY / freq;
 	chThdSleepUntilWindowed(before, before + period);
 
-	return writen;
+	return written;
+#endif
 }
 
 #endif // EFI_PROD_CODE

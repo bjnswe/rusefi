@@ -55,6 +55,7 @@ static bool havePreviousPressureBin;
 static int previousPressureBin;
 static cylinder_pressure::Accumulator pressureAccumulator;
 static volatile bool completedPressureTraceReady;
+static volatile uint32_t completedPressureTraceSequence;
 static volatile bool pressureDumpInProgress;
 static volatile bool pressureDiscardUntilCycleEnd;
 
@@ -107,6 +108,7 @@ static void startPressureAdc() {
 	pressureDmaBoundaryIndex = 0;
 	pressureProcessedSamples = 0;
 	pressureDmaOverruns = 0;
+	completedPressureTraceSequence = 0;
 	havePreviousPressureTrigger = false;
 	havePreviousPressureBin = false;
 	pressureAccumulator.clear();
@@ -194,6 +196,7 @@ static void processPressureSamplesAtTrigger(const cylinder_pressure::TriggerPoin
 				} else {
 					pressureAccumulator.finishCycle(engine->outputChannels.completedPressureTrace);
 					completedPressureTraceReady = true;
+					completedPressureTraceSequence++;
 				}
 			}
 			if (!pressureDumpInProgress && !pressureDiscardUntilCycleEnd) {
@@ -470,5 +473,14 @@ void dumpCylinderPressureTrace() {
 	}
 #else
 	efiPrintf("Cylinder pressure capture is unavailable on this build");
+#endif
+}
+
+uint32_t getCompletedCylinderPressureTraceSequence() {
+#if EFI_MAP_AVERAGING && defined(MODULE_MAP_AVERAGING) && EFI_PROD_CODE && EFI_CYLINDER_PRESSURE && HAL_USE_ADC && !defined(STM32H7XX)
+	chibios_rt::CriticalSectionLocker csl;
+	return completedPressureTraceSequence;
+#else
+	return 0;
 #endif
 }

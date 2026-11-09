@@ -79,3 +79,6 @@ public:
 
 // Raw 720-degree trace export. The command emits one CSV row per degree.
 void dumpCylinderPressureTrace();
+
+// Changes once for each completed raw 720-degree pressure trace.
+uint32_t getCompletedCylinderPressureTraceSequence();
